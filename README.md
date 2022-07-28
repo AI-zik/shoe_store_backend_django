@@ -2,13 +2,11 @@
 
 This is a backend for a shoe store using django and djangorestframework
 
-the routes are as follows
+You can Add shoes, features of each shoe, images, shoe sizes, add items to cart and checkout using stripe
 
-### shoes
-#### methods:
-__GET__: Lists all shoes
-__POST__: Adds shoes
-    __params__:
+users can also login using JWT token authentication, register, edit their profiles and change their password
+
+They can purchase products and leave reviews of products they've purchased.
 
 
 
