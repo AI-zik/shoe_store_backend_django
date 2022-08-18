@@ -7,15 +7,15 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import JSONParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 
 from users.permissions import IsAdminOrReadOnly, IsOwner, IsOwnerOrReadOnly
-from .serializers import (AvailableShoeSizeDetailSerializer, 
-AvailableShoeSizeListSerializer, CartListSerializer, CategoryListSerializer, 
+from .serializers import (ShoeColorSerializer, ShoeVariantDetailSerializer, 
+ShoeVariantListSerializer, CartListSerializer, CategoryListSerializer, 
 ModifyCartSerializer, RatingSerializer, ShoeDetailSerializer, ShoeFeatureSerializer, ShoeListSerializer,
  ShoeCategoryListSerializer, ShoeImageSerializer, ShoeSizeSerializer, 
  ParentCategoryListSerializer, ShoeCategorySerializer, ShoeSerializer)
-from .models import (AvailableShoeSize, CartItem, Category, Rating, Shoe, 
+from .models import (ShoeColor, ShoeVariant, CartItem, Category, Rating, Shoe, 
 ShoeCategory, ShoeFeature, ShoeImage, ShoeSize)
 from .utils import float_or_none
 
@@ -64,27 +64,27 @@ class ShoeListView(APIView):
         # getting the max price
         if float_or_none(price_max):
             price_max = float_or_none(price_max)
-            query.append(Q(available_shoe_sizes__price__lte=price_max))
+            query.append(Q(variants__price__lte=price_max))
 
         # getting the minimum price
         if float_or_none(price_min):
             price_min = float_or_none(price_min)
-            query.append(Q(available_shoe_sizes__price__gte=price_min))
+            query.append(Q(variants__price__gte=price_min))
 
         # getting the sizes to display
         if sizes:
             sizes = sizes.replace("-", " ")
             sizes = sizes.split(",")
-            clauses = (Q(available_shoe_sizes__shoe_size__name=size) for size in sizes)
+            clauses = (Q(variants__size__name=size) for size in sizes)
             query.append(reduce(operator.or_, clauses))
 
 
         if len(query) > 0:
             query = reduce(operator.and_, query)
             if sizes and categories:
-                shoes = Shoe.objects.all().prefetch_related('categories', 'available_shoe_sizes').filter(query).order_by(ordering).distinct()
+                shoes = Shoe.objects.all().prefetch_related('categories', 'variants').filter(query).order_by(ordering).distinct()
             elif sizes or price_max or price_min:
-                shoes = Shoe.objects.all().prefetch_related( 'available_shoe_sizes').filter(query).order_by(ordering).distinct()
+                shoes = Shoe.objects.all().prefetch_related( 'variants').filter(query).order_by(ordering).distinct()
             elif categories or search_query:
                 shoes = Shoe.objects.all().prefetch_related('categories').filter(query).order_by(ordering).distinct()
             else:
@@ -174,14 +174,20 @@ class ShoeImageListView(APIView):
     parser_classes = [JSONParser, MultiPartParser]
     permission_classes = [IsAdminOrReadOnly]
 
-    def get(self, request, shoe_id, format=None):
-        shoe_images = ShoeImage.objects.filter(shoe__id = shoe_id)
+    def get(self, request, format=None):
+        shoe_images = ShoeImage.objects.all()
         serializer = ShoeImageSerializer(shoe_images, many=True)
         return Response(serializer.data)
 
-    def post(self, request, shoe_id, format=None):
-        request.data["shoe"] = shoe_id
+    def post(self, request, format=None):
         serializer = ShoeImageSerializer(data=request.data, context={"request" : request})
+        if request.FILES.get("image"):
+            image = request.FILES.get("image")
+            request.FILES["medium"] = image
+            request.FILES["thumbnail"] = image
+            request.data["medium"] = request.FILES["medium"]
+            request.data["thumbnail"] = request.FILES["thumbnail"]
+
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -192,20 +198,20 @@ class ShoeImageDetailView(APIView):
     parser_classes = [JSONParser, MultiPartParser]
     permission_classes = [IsAdminUser]
 
-    def get_object(self, shoe_id, image_id):
-        obj = get_object_or_404(ShoeImage, shoe__id = shoe_id, id = image_id)
+    def get_object(self, image_id):
+        obj = get_object_or_404(ShoeImage, id = image_id)
         return obj
 
-    def put(self, request, image_id, shoe_id, format=None):
-        shoe_image = self.get_object(shoe_id, image_id)
+    def put(self, request, image_id,  format=None):
+        shoe_image = self.get_object( image_id)
         serializer = ShoeImageSerializer(shoe_image, data=request.data, context={'request' : request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def delete(self, request, image_id, shoe_id, format=None):
-        shoe_image = self.get_object(shoe_id, image_id)
+    def delete(self, request, image_id,  format=None):
+        shoe_image = self.get_object( image_id)
         shoe_image.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -247,49 +253,96 @@ class ShoeSizeUpdateDeleteView(APIView):
         shoe_size.delete()
         return Response(status = status.HTTP_204_NO_CONTENT)
 
-class AvailableShoeSizeListView(APIView):
+class ShoeColorListCreateView(APIView):
+
+    permission_classes = [IsAdminOrReadOnly]
+
+    def get_object(self, shoe_id):
+        obj = get_object_or_404(ShoeColor, shoe_id = shoe_id)
+        return obj
+
+    def get(self, request, shoe_id, format=None):
+        colors = ShoeColor.objects.filter(shoe__id = shoe_id)
+        serializer = ShoeColorSerializer(colors, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, shoe_id, format=None):
+        if type(request.data) == dict:
+            request.data["shoe"] = shoe_id
+        serializer = ShoeColorSerializer(data = request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+
+class ShoeColorUpdateDeleteView(APIView):
+
+    permission_classes = [IsAdminUser]
+
+    def get_object(self, color_id):
+        obj = get_object_or_404(ShoeColor, id = color_id)
+        return obj
+
+    def put(self, request, color_id, format = None):
+        shoe_size = self.get_object(color_id)
+        serializer = ShoeColorSerializer(shoe_size, data = request.data, partial = True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, color_id, format = None):
+        shoe_size = self.get_object(color_id)
+        shoe_size.delete()
+        return Response(status = status.HTTP_204_NO_CONTENT)
+
+class ShoeVariantListView(APIView):
 
     permission_classes = [IsAdminOrReadOnly]
 
     def get(self, request, shoe_id, format=None):
-        available_shoe_sizes = AvailableShoeSize.objects.filter(shoe__id = shoe_id)
-        serializer = AvailableShoeSizeListSerializer(available_shoe_sizes, many=True)
+        available_shoe_sizes = ShoeVariant.objects.filter(shoe__id = shoe_id)
+        serializer = ShoeVariantListSerializer(available_shoe_sizes, many=True)
         return Response(serializer.data)
 
     def post(self, request, shoe_id, format=None):
-        request.data['shoe'] = shoe_id
-        try:
-            shoe_size = ShoeSize.objects.get(name=request.data['shoe_size'])
-        except :
-            request.data['shoe_size'] = None
-        else:
-            request.data['shoe_size'] = shoe_size.id
+        if type(request.data) == dict:
+            request.data["shoe"] = shoe_id
+            try:
+                shoe_size = ShoeSize.objects.get(name=request.data['size'])
+            except :
+                request.data['size'] = None
+            else:
+                request.data['size'] = shoe_size.id
             
-        serializer = AvailableShoeSizeDetailSerializer(data=request.data)
+        serializer = ShoeVariantDetailSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return_serializer = ShoeVariantListSerializer(ShoeVariant.objects.get(id = serializer.data["id"]))
+            return Response(return_serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class AvailableShoeSizeDetailView(APIView):
+class ShoeVariantDetailView(APIView):
 
     permission_classes = [IsAdminUser]
 
-    def get_object(self, size_id, shoe_id):
-        obj = get_object_or_404(AvailableShoeSize, id = size_id, shoe__id = shoe_id)
+    def get_object(self, variant_id, shoe_id):
+        obj = get_object_or_404(ShoeVariant, id = variant_id, shoe__id = shoe_id)
         return obj
 
-    def put(self, request, shoe_id, size_id, format=None):
-        shoe_size = self.get_object(size_id, shoe_id)
-        serializer = AvailableShoeSizeDetailSerializer(shoe_size, data=request.data, partial=True)
+    def put(self, request, shoe_id, variant_id, format=None):
+        shoe_size = self.get_object(variant_id, shoe_id)
+        serializer = ShoeVariantDetailSerializer(shoe_size, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return_serializer = ShoeVariantListSerializer(ShoeVariant.objects.get(id = serializer.data["id"]))
+            return Response(return_serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def delete(self, request, shoe_id, size_id, format=None):
-        shoe_size = self.get_object(size_id, shoe_id)
+    def delete(self, request, shoe_id, variant_id, format=None):
+        shoe_size = self.get_object(variant_id, shoe_id)
         shoe_size.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -298,7 +351,7 @@ class CategoryListView(APIView):
     permission_classes = [IsAdminOrReadOnly]
 
     def get(self, request, format=None):
-        categories = Category.objects.filter(Q(parent_id=1), Q(id__gt=1))
+        categories = Category.objects.filter(parent_id = None)
         serializer = ParentCategoryListSerializer(categories, many=True)
         return Response(serializer.data)
 
@@ -341,12 +394,34 @@ class ShoeCategoryView(APIView):
         return Response(serializer.data)
 
     def post(self, request, shoe_id, format=None):
-        request.data["shoe"] = shoe_id
+        request.data["shoe"] = shoe_id if type(request.data) == dict else None
         serializer = ShoeCategorySerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST) 
+
+class ShoeCategoryUpdateDeleteView(APIView):
+
+    permission_classes = [IsAdminOrReadOnly]
+    
+    def get_object(self, category_id, shoe_id):
+        obj = get_object_or_404(ShoeCategory, id = category_id, shoe__id = shoe_id)
+        return obj
+
+    def put(self, request, category_id, shoe_id, format = None):
+        category = self.get_object(category_id, shoe_id)
+        serializer = ShoeCategorySerializer(category, request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, category_id, shoe_id, format=None):
+        category = self.get_object(category_id, shoe_id)
+        category.delete()
+        return Response(status = status.HTTP_204_NO_CONTENT)
+
 
 class UserCartView(APIView):
 

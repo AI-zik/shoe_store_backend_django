@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from shoes.models import AvailableShoeSize
+from shoes.models import ShoeVariant
 
 class ProductListSerializer(serializers.Serializer):
     id = serializers.IntegerField(required = True)
@@ -13,7 +13,7 @@ class ProductListSerializer(serializers.Serializer):
 
     def validate(self, data):
         try:
-            item = AvailableShoeSize.objects.get(id = data["id"])
+            item = ShoeVariant.objects.get(id = data["id"])
         except:
             raise serializers.ValidationError("Product selected doesn't exist")
         else:
@@ -22,15 +22,15 @@ class ProductListSerializer(serializers.Serializer):
         return data
 
     def get_price(self, obj):
-        item = AvailableShoeSize.objects.get(id = obj["id"])
+        item = ShoeVariant.objects.get(id = obj["id"])
         return item.price
 
     def get_name(self, obj):
-        item = AvailableShoeSize.objects.get(id = obj["id"])
-        return f"{item.shoe.name} - {item.shoe_size.name}"
+        item = ShoeVariant.objects.get(id = obj["id"])
+        return f"{item.shoe.name} - {item.size.name}"
 
     def get_discount (self, obj):
-        item =  AvailableShoeSize.objects.get(id = obj["id"])
+        item =  ShoeVariant.objects.get(id = obj["id"])
         return item.discount
 
 

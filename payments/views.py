@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
 from payments.serializers import ProductCheckoutSerializer, ProductListSerializer
-from shoes.models import AvailableShoeSize, CartItem
+from shoes.models import ShoeVariant, CartItem
 from users.models import User
 from .models import Purchase, Transaction
 
@@ -195,7 +195,7 @@ class StripeWebhookView(APIView):
                 item["discount"] = Decimal(item["discount"])
 
                 # reducing the quantities of each product
-                product = AvailableShoeSize.objects.get(id = item["id"])
+                product = ShoeVariant.objects.get(id = item["id"])
                 product.quantity -= item["quantity"]
                 product.save()
                 
@@ -217,7 +217,7 @@ class StripeWebhookView(APIView):
                 # entering each item purchased in the database
                 purchase = Purchase(
                     quantity = item["quantity"],
-                    shoe = AvailableShoeSize.objects.get(id = item["id"]),
+                    shoe = ShoeVariant.objects.get(id = item["id"]),
                     price = item["price"],
                     discount = item["discount"],
                     transaction = transaction

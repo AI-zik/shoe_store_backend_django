@@ -1,3 +1,4 @@
+from django.http import QueryDict
 from django.shortcuts import get_object_or_404, render
 from rest_framework import status
 from rest_framework.views import APIView
@@ -52,8 +53,10 @@ class UserRegisterView(APIView):
 
     permission_classes = [AllowAny]
 
-    def post(self, request, format=None):
-        request.data["user_type"] = 2
+    def post(self, request, format="json"):
+        if type(request.data) == dict:
+            request.data["user_type"] = 2
+
         serializer = RegisterUserSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
